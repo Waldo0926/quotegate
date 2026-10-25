@@ -1,0 +1,91 @@
+name: Release
+
+# Push a v<version> tag to publish: the tag must match __version__, CHANGELOG.md must have that section and
+# the tagged commit must be on main. Tests run, then the package goes to PyPI with Trusted Publishing (no
+# password or token stored anywhere), then a GitHub Release is made from the changelog section.
+#   git tag v0.1.0 && git push origin v0.1.0
+# One-time setup on PyPI: add a pending publisher for project quotegate, owner Waldo0926, repository
+# quotegate, workflow release.yml, environment pypi.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          fetch-depth: 0
+      - name: Tag, __version__ and CHANGELOG agree, and the tag is on main
+        id: v
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/quotegate/__init__.py)
+          if [ "$tag" != "$version" ]; then
+            echo "::error::the tag is v$tag but __version__ is $version"; exit 1
+          fi
+          if ! grep -q "^## $version" CHANGELOG.md; then
+            echo "::error file=CHANGELOG.md::no ## $version section"; exit 1
+          fi
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::v$version is not on main; merge first, then tag"; exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: check
+    uses: ./.github/workflows/test.yml
+
+  build:
+    needs: [check, test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6
+      - run: uv build
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: [check, build]
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/quotegate/${{ needs.check.outputs.version }}/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # release/v1
+
+  github-release:
+    needs: [check, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          name: dist
+          path: dist/
+      - name: Release notes from the changelog section
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          awk -v v="$VERSION" '$0 ~ "^## "v {on=1; next} /^## / {on=0} on' CHANGELOG.md > notes.md
+          gh release create "v$VERSION" dist/* --title "quotegate $VERSION" --notes-file notes.md

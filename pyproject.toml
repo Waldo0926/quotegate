@@ -1,0 +1,38 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "quotegate"
+dynamic = ["version"]
+description = "Let a language model answer only with sentences copied from your passages, checked in code"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Waldo" }]
+requires-python = ">=3.10"
+dependencies = []
+keywords = ["rag", "llm", "citations", "grounding", "hallucination"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Natural Language :: Chinese (Simplified)",
+  "Natural Language :: English",
+  "Topic :: Text Processing :: Linguistic",
+  "Typing :: Typed",
+]
+
+[project.urls]
+Source = "https://github.com/Waldo0926/quotegate"
+Changelog = "https://github.com/Waldo0926/quotegate/blob/main/CHANGELOG.md"
+
+[tool.hatch.version]
+path = "src/quotegate/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/quotegate"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120

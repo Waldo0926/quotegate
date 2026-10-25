@@ -1,0 +1,46 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.10", "3.13"]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6
+      - run: uv venv --python ${{ matrix.python }}
+      - run: uv pip install -e . pytest ruff
+      - run: uv run --no-sync pytest -q
+      - run: uv run --no-sync ruff check .
+
+  package:
+    # Build the wheel and import it from a clean environment, as a user would.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6
+      - run: uv build
+      - name: Install the wheel in a clean venv and run the README example
+        run: |
+          uv venv /tmp/clean
+          uv pip install --python /tmp/clean dist/*.whl
+          cd /tmp && /tmp/clean/bin/python - <<'PY'
+          from quotegate import Passage, check
+          r = check("[1] Apply online within two working days",
+                    [Passage("Apply online within two working days of the due date.")])
+          assert r.ok and r.kept[0].text == "Apply online within two working days of the due date.", r
+          import quotegate.prompts
+          print("ok", quotegate.__version__)
+          PY
